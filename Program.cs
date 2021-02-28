@@ -13,40 +13,42 @@ using System.Drawing;
 using System.Threading.Tasks;
 using PgnToFenCore;
 using PgnToFenCore.Conversion;
-
+using System.Collections;
 
 namespace Anti_Cheating_software
 {
-    class Program
-    {
+	class Program
+	{
 
-		public String pgntofenexe = 
+		public String pgntofenexe =
 			"C:\\Users\\vzsto\\source\\repos\\PgnToFen\\PgnToFen\\bin" +
 			"\\Debug\\netcoreapp3.0\\PgnToFen.exe";
 
 		static void Main(string[] args)
-        {
+		{
 
 			try
 			{
 				PGN_File_Handler fileHandler = new PGN_File_Handler();
 
 				string dir = "C:\\Users\\vzsto\\Documents\\COMPSCI_Project\\PGN-format\\TEST\\";
-				fileHandler.readPGN(dir);
+				//fileHandler.readPGN(dir);
 
-				string Fn = "C:\\Users\\vzsto\\Documents\\COMPSCI_Project\\Stockfish\\stockfish_20090216_x64.exe";
-		 
-				//StockfishCall sf = new StockfishCall();
-				//sf.RunStockfish(Fn);
+				string Fnexe = "C:\\Users\\vzsto\\Documents\\COMPSCI_Project\\Stockfish\\stockfish_20090216_x64.exe";
+
+				string inFn1 = "C:\\Users\\vzsto\\Documents\\COMPSCI_Project\\PGN-format\\TEST\\twic920.pgn_0_S.fen";
+
+				  StockfishCall sf = new StockfishCall();
+				sf.RunStockfishAsync(Fnexe, inFn1);
 				//sf.RunStockfish(Fn, "isready uci ");
 				//sf.RunStockfish(Fn, "uci");
 				//sf.RunStockfish(Fn, "position startpos");
 				//sf.RunStockfish(Fn, "position startpos moves e2e4");
 				//sf.RunStockfish(Fn, "eval");
 				Console.ReadKey();
-			}catch(FileNotFoundException e)
+			} catch (FileNotFoundException e)
 			{
-				Console.WriteLine(e.ToString()+e.FileName);
+				Console.WriteLine(e.ToString() + e.FileName);
 			}
 
 		}
@@ -54,7 +56,8 @@ namespace Anti_Cheating_software
 
 	public class PGN_File_Handler
 	{
-		SqlConnection conn = new SqlConnection(@"Initial Catalog=ChessGamesDatabase");
+		SqliteConnection conn = new SqliteConnection(
+			"Data Source=C:\\Users\\vzsto\\source\\repos\\Anti-Cheating_software\\ChessGamesDatabase.db");
 
 		public String pgntofenexe = 
 			"C:\\Users\\vzsto\\source\\repos\\PgnToFen" +
@@ -68,43 +71,20 @@ namespace Anti_Cheating_software
 
 		}
 
-		public void readPGNs(string dir)
-		{
-
-			try
-			{
-				string qry = "";
-				conn.Open();
-
-
-
-				conn.Close();
-
-
-
-				/*using (SqliteConnection cxn = new SqliteConnection(_connectionString))
-				{
-					cxn.Open();
-					SqliteCommand cmd = new SqliteCommand(qry, cxn);
-					cmd.CommandType = CommandType.Text;
-
-
-
-
-				}
-				*/
-
-			}
-			catch (Exception e)
-			{ Console.WriteLine(e.Message); }
-		}
+	
 
 		public List<Game> readPGN(string dir)
 		{
 			List<Game> Result = new List<Game>();
 
- 
-			if (Directory.Exists(dir))
+	try
+	{
+
+				
+		conn.Open();
+
+
+		if (Directory.Exists(dir)) 
 			{
 				// Process the list of files found in the directory.
 				string[] fileEntries = Directory.GetFiles(dir);
@@ -171,6 +151,10 @@ namespace Anti_Cheating_software
 										+ String.Join(" ", G.GameMoves.ToArray<string>()));
 								}
 
+									if (File.Exists(gamefen))
+									{
+										File.Delete(gamefen);
+									}
 
 								var procpgn = new Process
 								{
@@ -197,6 +181,27 @@ namespace Anti_Cheating_software
 								procpgn.WaitForExit();
 								procpgn.Close();
 
+
+									// Adding the game to the database.
+									SqliteCommand cmd = conn.CreateCommand();
+									cmd.CommandText = "INSERT INTO Games " +
+										"(GameID, Event, EventDate, Round," +
+										" White, Black, WhiteElo, BlackElo, Result, Moves) " +
+									"VALUES ("
+									+ (Result.Count -1) + ", " 
+									+ "'" + G.Event + "'" + ", "
+									+ "'" + G.EventDate + "'" + ", "
+									+ "'" + G.Round + "'" + ", "
+									+ "'" + G.WSurname + ", " + G.WForename + "'" + ", "
+									+ "'" + G.BSurname + ", " + G.BForename + "'" + ", "
+									+ "'" + G.WhiteElo + "'" + ", "
+									+ "'" + G.BlackElo + "'" + ", "
+									+ "'" + G.Result + "'" + ", "
+									+ "'" + GMoves + "'"
+											+");";
+
+									Console.WriteLine(cmd.CommandText);
+									cmd.ExecuteNonQuery();
 
 								//Starting a new game and a new set of moves
 								G = new Game();
@@ -285,6 +290,11 @@ namespace Anti_Cheating_software
 				Console.WriteLine("{0} is not a valid file or directory.", dir);
 			}
 
+				conn.Close();
+			}
+			catch (Exception e)
+			{ Console.WriteLine(e.Message); }
+
 			return Result;
 
 
@@ -311,85 +321,159 @@ public class StockfishCall
 			}
 		}
 
-		public void RunStockfish(string Fn)
+		public async Task RunStockfishAsync(string Fn, string inFn)
 		{
-			var proc = new Process
+			try
 			{
-				StartInfo = new ProcessStartInfo
+				var proc = new Process
 				{
-					FileName = Fn, 
-					Arguments = "",
-					UseShellExecute = false,
-					RedirectStandardOutput = true,
-					CreateNoWindow = true
-				}
-			};
+					StartInfo = new ProcessStartInfo
+					{
+						FileName = Fn,
+						Arguments = "",
+						UseShellExecute = false,
+						RedirectStandardOutput = true,
+						CreateNoWindow = true
+					}
+				};
 
-			output = new StringBuilder();
-			proc.OutputDataReceived += new DataReceivedEventHandler(OutputHandler);
+				ArrayList FENs = new ArrayList();
 
-			// Redirect standard input as well.  This stream
-			// is used synchronously.
-			proc.StartInfo.RedirectStandardInput = true;
-			proc.Start();
+				output = new StringBuilder();
+				proc.OutputDataReceived += new DataReceivedEventHandler(OutputHandler);
 
-			// Setting up a stream writer which will be fed to stockfish and processed.
-			StreamWriter streamWriter = proc.StandardInput;
+				// Redirect standard input as well.  This stream
+				// is used synchronously.
+				proc.StartInfo.RedirectStandardInput = true;
 
-			// Start the asynchronous read of the sort output stream.
-			proc.BeginOutputReadLine();
 
-			/*
-			String inputText;
-			int numInputLines = 0;
-			do
-			{
-				Console.WriteLine("Enter a text line (or press the Enter key to stop):");
 
-				inputText = Console.ReadLine();
-				if (!String.IsNullOrEmpty(inputText))
+				proc.Start();
+
+
+
+
+
+				// Setting up a stream writer which will be fed to stockfish and processed.
+				StreamWriter streamWriter = proc.StandardInput;
+
+				// Start the synchronous read of the output stream.
+				StreamReader streamReader = proc.StandardOutput;
+
+				//				proc.BeginOutputReadLine();
+
+				streamWriter.WriteLine("isready");
+				streamWriter.WriteLine("uci");
+				streamWriter.WriteLine("position startpos");
+				streamWriter.Flush();
+
+
+				//read file line by line
+				string[] lines = System.IO.File.ReadAllLines(inFn);
+				foreach (string line in lines)
 				{
-					numInputLines++;
-					streamWriter.WriteLine(inputText);
+					Console.WriteLine(line);
+
+					if (String.IsNullOrEmpty(line)) continue;
+
+
+					output.Clear();
+					streamWriter.WriteLine("position fen " + line);
+					FENs.Add(line);
+
+
+
+					streamWriter.WriteLine("d");
+					streamWriter.WriteLine("eval");
+					streamWriter.Flush();
+
+
+					Console.WriteLine("Done");
+
+					//					if (outputLines > 0)
+					//					{
+					//						// Write the formatted and sorted output to the console.
+					//						Console.WriteLine("----------");
+					//						Console.WriteLine(output);
+					//					}
+					//					else
+					//					{ 
+					//						Console.WriteLine("No output received from Stockfish.");
+					//					}
+
+					//					Console.ReadKey();
+
 				}
-			} while (!String.IsNullOrEmpty(inputText) && (numInputLines < 2));
-
-			Console.WriteLine("<end of input stream>");
-			Console.WriteLine();
-			*/
-
-			// End the input stream to the sort command.
-
-			streamWriter.WriteLine("isready");
-			streamWriter.WriteLine("uci");
-			streamWriter.WriteLine("position startpos");
-			streamWriter.WriteLine("d");
-			streamWriter.WriteLine("eval");
 
 
-			streamWriter.Close();
 
-			// Wait for the sort process to write the sorted text lines.
-			proc.WaitForExit();
 
-			if (outputLines > 0)
-			{
-				// Write the formatted and sorted output to the console.
-				Console.WriteLine($" Sort results = {outputLines} sorted text line(s) ");
-				Console.WriteLine("----------");
-				Console.WriteLine(output);
+				streamWriter.Flush();
+
+				streamWriter.Close();
+
+				
+
+				ArrayList Evals = new ArrayList ();
+				int MoveCount = 0;
+				string evaltype = "Classical evaluation: ";
+
+				while (!streamReader.EndOfStream) { 
+					string L = await streamReader.ReadLineAsync();
+					while (L != null && L.Trim().Length > 0)
+					{
+						if (L.StartsWith(evaltype))
+						{
+
+							int diff = L.Length - evaltype.Length - 12;
+							string eS = L.Substring(evaltype.Length, diff);
+							Console.WriteLine("EV " + diff + " " + eS + " " +  Evals.Count);
+
+							Evals.Add(Convert.ToDouble(eS));
+						}
+
+						Console.WriteLine("R " + L); 
+						L = await streamReader.ReadLineAsync();
+					}
+
+					Console.WriteLine("EV end");
+				}
+
+				Console.WriteLine("DE:"+Evals.Count);
+				for (int i = 0; i<Evals.Count; i++ )
+				{
+					Console.WriteLine(Evals[i] +  " " + FENs[i]);
+					
+				}
+
+				Console.ReadKey();
+
+
+				Console.WriteLine();
+				streamReader.Close();
+
+
+				// Wait for the process
+				proc.WaitForExit();
+
+
+
+
+				proc.Close();
+
+
+
 			}
-			else
+			catch (System.Exception e)
 			{
-				Console.WriteLine(" No input lines were sorted.");
+				Console.WriteLine(e.StackTrace);
 			}
-
-			
-			proc.Close();
-
 		}
 
-		}
+
+		
+
+	}
 
 	public class Game
 	{
