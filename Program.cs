@@ -76,25 +76,22 @@ namespace Anti_Cheating_software
 
 
                 //1.
-                fileHandler.PgnFenConversion(TestDir4);
+                fileHandler.PgnFenConversion(TestDir6);
                 //2.
-                sf.RunStockfishAll(Fnexe, TestDir4);
+                sf.RunStockfishAll(Fnexe, TestDir6);
                 //3.
-                sf.TestStatOnFiles(TestDir4);
+                sf.TestStatOnFiles(TestDir6);
                 //4.
-                Console.WriteLine(GameTester.EvaluateGames(TestDir4, "Player, Test"));
+                Console.WriteLine(GameTester.EvaluateGames(TestDir6, "Player, Test"));
 
                 //DataHandler.StatisticsCollection(inFn3);
 
-                //Console.WriteLine(GameTester.EvaluateGames(TestDir1, "Player, Test"));
-                //Console.WriteLine(GameTester.EvaluateGames(TestDir2, "Player, Test"));
-                //Console.WriteLine(GameTester.EvaluateGames(TestDir3, "Player, Test"));
-                //Console.WriteLine(GameTester.EvaluateGames(TestDir4, "Player, Test"));
-                //Console.WriteLine(GameTester.EvaluateGames(TestDir5, "Player, Test"));
-                //Console.WriteLine(GameTester.EvaluateGames(TestDir6, "Player, Test"));
+               
 
+                string outFn4 = "C:\\Users\\vzsto\\Documents\\" +
+                    "COMPSCI_Project\\Data_2100.tsv";
 
-
+                //DataHandler.getStatisticsForRange(2100, outFn4);
 
 
 
@@ -587,7 +584,7 @@ namespace Anti_Cheating_software
 
                 }
 
-               
+
                 if (TestStatDict[i].Count() > 0)
                 {
                     double FinalSum = 0.0f;
@@ -628,7 +625,100 @@ namespace Anti_Cheating_software
 
         }
 
+
+
+        //Outputs the statistics for a single ELO range group.
+        public void getStatisticsForRange(int i, string OutputFile)
+        {
+            //Creating a stream writer which is used to fill the file OutputFile
+            StreamWriter OutputFileWriter = new StreamWriter(OutputFile);
+
+            //Establishing a connection with the database so that it can be read from
+            //and the elo ratings taken, using the foreign keys from Players which are present
+            //in Games.
+            SqliteConnection conn = new SqliteConnection(
+                    "Data Source=C:\\Users\\vzsto\\source\\repos" +
+                    "\\Anti-Cheating_software\\ChessGamesDatabase.db");
+
+            conn.Open();
+
+            
+                 //Adding the keys to the dictionary
+                TestStatDict.Add(i, new List<double>());
+                FinalTestDict.Add(i, new List<double>());
+
+                //Extracting the records which are inside the relevant rating range.
+                string RecordExtraction = "SELECT PlayerID FROM Players WHERE ELO BETWEEN " + i + " AND " + (i + 100);
+                SqliteCommand GetPlayersCommand = new SqliteCommand(RecordExtraction, conn);
+                SqliteDataReader GetPlayersReader = GetPlayersCommand.ExecuteReader();
+
+                //Going through the output, as long as there are still records being read, the 
+                //stats are taken for each player.
+                while (GetPlayersReader.Read())
+                {
+
+
+                    string name = GetPlayersReader.GetString(0);
+                    Console.WriteLine(name);
+                    string TestStatExtractionWhite = "SELECT WhiteStats FROM Games WHERE White = '" + name + "'";
+                    SqliteCommand TestStatExtractionCommandWhite = new SqliteCommand(TestStatExtractionWhite, conn);
+                    SqliteDataReader TestStatWhiteReader = TestStatExtractionCommandWhite.ExecuteReader();
+
+
+                    while (TestStatWhiteReader.Read())
+                    {
+                        //Reads the first (0th) element in each row (the second being the FEN)
+                        string Stats = TestStatWhiteReader.GetString(0);
+
+                        //Calculates the mean of all the test statistics
+                        double Mean = dp.MeanCalculator(Stats);
+
+                        //Skips places where the mean is less than zero so that
+                        //it doesn't mess up the final data..
+                        if (Mean < 0) continue;
+
+                    OutputFileWriter.WriteLine(Mean);
+
+                    OutputFileWriter.Flush();
+
+                }
+
+                    //A similar set of procedures is carried out for games where the player played with
+                    //the black pieces, as outlined above for their white games.
+                    string TestStatExtractionBlack = "SELECT BlackStats FROM Games WHERE Black = '" + name + "'";
+                    SqliteCommand TestStatExtractionCommandBlack = new SqliteCommand(TestStatExtractionBlack, conn);
+                    SqliteDataReader TestStatBlackReader = TestStatExtractionCommandBlack.ExecuteReader();
+
+
+                    while (TestStatBlackReader.Read())
+                    {
+                        string Stats = TestStatBlackReader.GetString(0);
+                        //Console.WriteLine(Stats);
+                        double Mean = dp.MeanCalculator(Stats);
+                        if (Mean < 0) continue;
+
+                        OutputFileWriter.WriteLine(Mean);
+
+                        OutputFileWriter.Flush();
+                    }
+
+
+
+
+            }
+
+
+            conn.Close();
+            OutputFileWriter.Close();
+
+
+
+        }
+
+
     }
+    }
+
 
     public class DataProcessor{
 
@@ -695,7 +785,7 @@ namespace Anti_Cheating_software
 
             
             double total = 0.0f;
-            Console.WriteLine("Analysing player" + PlayerName + "'s games...");
+            //Console.WriteLine("Analysing player" + PlayerName + "'s games...");
 
             //Creating a object of type DataProcessor which is used to call functions
             //from the DataProcessor class
@@ -756,8 +846,8 @@ namespace Anti_Cheating_software
                     }
                     Console.WriteLine(elo);
                     Console.WriteLine(PlayerCalcs);
-                    
-                    if (elo == 0) continue;
+
+                if (elo == 0) continue;
 
                     //Calculating the mean test statistic per move for the game in question.
                     total += dp.MeanCalculator(PlayerCalcs);
@@ -775,11 +865,11 @@ namespace Anti_Cheating_software
 
                 //Comparing the mean test statistic per move for the test player to the expected one
                 //in the dictionary, so as to make a conclusion on the legitimacy of the player's play.
-                if (total - TestGamesStatsDict[eloLowerBound][0] < TestGamesStatsDict[eloLowerBound][0] - 0.5 * TestGamesStatsDict[eloLowerBound][1])
+                if (TestGamesStatsDict[eloLowerBound][0] - total < TestGamesStatsDict[eloLowerBound][0] - 0.5 * TestGamesStatsDict[eloLowerBound][1])
                     result = "Potential flag - Another such result from this player will require human intervention";
-                if (total - TestGamesStatsDict[eloLowerBound][0] < TestGamesStatsDict[eloLowerBound][0] - TestGamesStatsDict[eloLowerBound][1])
+                if (TestGamesStatsDict[eloLowerBound][0] - total < TestGamesStatsDict[eloLowerBound][0] - TestGamesStatsDict[eloLowerBound][1])
                     result = "Flag - Requires urgent human intervention";
-                else result = "Legitimate game";
+                else result = "Legitimate games";
             }
             catch (Exception e)
             { 
@@ -1049,7 +1139,7 @@ namespace Anti_Cheating_software
                 else if (EvalBest == -1 && EvalPlayed < -1)
                 {
                     EvalBest = -1.01;
-                    double TestStatCase2 = Math.Log((-EvalBest + 1) / (-EvalPlayed + 1));
+                    double TestStatCase2 = Math.Log((-EvalPlayed + 1) / (-EvalBest - 1));
                     return TestStatCase2;
                 }
                 else if (EvalBest > -1 && EvalPlayed > -1)
@@ -1062,7 +1152,7 @@ namespace Anti_Cheating_software
                 }
                 else if (EvalBest < -1 && EvalPlayed < -1)
                 {
-                    double TestStatCase4 = Math.Log((-EvalPlayed + 1) / (-EvalBest + 1));
+                    double TestStatCase4 = Math.Log((-EvalPlayed + 1) / (-EvalBest - 1));
 
                     return TestStatCase4;
                 }
@@ -1311,5 +1401,3 @@ namespace Anti_Cheating_software
 
 
 
-
-}
